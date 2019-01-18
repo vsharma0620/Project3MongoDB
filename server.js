@@ -1,47 +1,78 @@
-// Our newest addition to the dependency family
-var mongoose = require("mongoose");
-var logger = require("morgan");
-var cors = require('cors');
+// Loading evnironmental variables here
+require('dotenv').config()
 
-// Middleware necessary for front end to talk to backend
-app.use(cors({
-  credentials: true,
-  origin: ['http://localhost:3000'],
-}));
-// Requiring the `Example` model for accessing the `examples` collection
-var Driver = require("./models/Driver.js");
-var Sender = require("./models/Sender.js");
-var Inventory = require("./models/Inventory.js");
+const express = require('express')
+const bodyParser = require('body-parser')
+const morgan = require('morgan')
+const session = require('express-session')
+const MongoStore = require('connect-mongo')(session)
+const dbConnection = require('./db') // loads our connection to the mongo database
+const passport = require('./passport')
+const app = express()
+const PORT = process.env.PORT || 3001
 
-// Connect to the MongoDB
-mongoose.connect("mongodb://localhost/schemaexample", { useNewUrlParser: true });
+// ===== Middleware ====
+app.use(morgan('dev'))
+app.use(
+	bodyParser.urlencoded({
+		extended: false
+	})
+)
+app.use(bodyParser.json())
+app.use(
+	session({
+		secret: process.env.APP_SECRET || 'this is the default passphrase',
+		store: new MongoStore({ mongooseConnection: dbConnection }),
+		resave: false,
+		saveUninitialized: false
+	})
+)
 
-// Create an object containing dummy data to save to the database
-var driver = {
-  array: ["driver1", "driver2", "driver3"],
-  string: []
-  //   "\"Don't worry if it doesn't work right. If everything did, you'd be out of a job\" - Mosher's Law of Software Engineering",
-};
-
-var sender = {
-    array: ["sender1", "sender2", "sender3"],
-    string: []
-    //   "\"Don't worry if it doesn't work right. If everything did, you'd be out of a job\" - Mosher's Law of Software Engineering",
-  };
-
-  var Inventory = {
-    array: ["package1", "package2", "package3"],
-    string: []
-    //   "\"Don't worry if it doesn't work right. If everything did, you'd be out of a job\" - Mosher's Law of Software Engineering",
-  };
-
-// Save a new Example using the data object
-Example.create(data)
-  .then(function(dbDriver) {
-    // If saved successfully, print the new Example document to the console
-    console.log(dbDriver);
-  })
-  .catch(function(err) {
-    // If an error occurs, log the error message
-    console.log(err.message);
+app.use(function(req, res, next) {
+	res.header("Access-Control-Allow-Origin", "*");
+	res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+	next();
   });
+
+// ===== Passport ====
+app.use(passport.initialize())
+app.use(passport.session()) // will call the deserializeUser
+
+// ===== testing middleware =====
+app.use(function(req, res, next) {
+	console.log('===== passport user =======')
+	console.log(req.session)
+	console.log(req.user)
+	console.log('===== END =======')
+	next()
+})
+// testing
+app.get(
+	'/auth/google/callback',
+	(req, res, next) => {
+		console.log(`req.user: ${req.user}`)
+		console.log('======= /auth/google/callback was called! =====')
+		next()
+	},
+	passport.authenticate('google', {
+		successRedirect: 'http://localhost:3000',
+		failureRedirect: 'http://localhost:3000/login'
+	})
+)
+
+/* Express app ROUTING */
+app.use('/auth', require('./routes/auth'))
+// app.use('/api', require('./routes/book'))
+
+
+// ====== Error handler ====
+app.use(function(err, req, res, next) {
+	console.log('====== ERROR =======')
+	console.error(err.stack)
+	res.status(500)
+})
+
+// ==== Starting Server =====
+app.listen(PORT, () => {
+	console.log(`App listening on PORT: ${PORT}`)
+})
